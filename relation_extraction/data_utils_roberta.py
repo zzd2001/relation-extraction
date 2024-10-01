@@ -4,7 +4,7 @@ import json
 
 import torch
 from torch.utils.data import Dataset
-from transformers import BertTokenizer
+from transformers import RobertaTokenizer, AutoTokenizer
 from tqdm import tqdm
 
 here = os.path.dirname(os.path.abspath(__file__))
@@ -12,9 +12,14 @@ here = os.path.dirname(os.path.abspath(__file__))
 
 class MyTokenizer(object):
     def __init__(self, pretrained_model_path=None, mask_entity=False):
-        self.pretrained_model_path = pretrained_model_path or 'bert-base-chinese'
-        self.bert_tokenizer = BertTokenizer.from_pretrained(self.pretrained_model_path)
+        self.pretrained_model_path = pretrained_model_path or 'roberta-base'
+        print(self.pretrained_model_path,'-----------------------------分词器路径--------------------------------------------')
+        self.roberta_tokenizer = AutoTokenizer.from_pretrained(self.pretrained_model_path)
         self.mask_entity = mask_entity
+        # 添加自定义标记到词表中
+        self.roberta_tokenizer.add_tokens(['[unused1]', '[unused2]', '[unused3]', '[unused4]'], special_tokens=True)
+        new_tokenizer_file = os.path.join(pretrained_model_path, 'roberta_tokenizer_with_special_tokens')
+        self.roberta_tokenizer.save_pretrained(new_tokenizer_file)
 
     def tokenize(self, item):
         sentence = item['text']
@@ -29,30 +34,30 @@ class MyTokenizer(object):
             pos_max = pos_tail
             rev = False
 
-        sent0 = self.bert_tokenizer.tokenize(sentence[:pos_min[0]])
-        ent0 = self.bert_tokenizer.tokenize(sentence[pos_min[0]:pos_min[1]])
-        sent1 = self.bert_tokenizer.tokenize(sentence[pos_min[1]:pos_max[0]])
-        ent1 = self.bert_tokenizer.tokenize(sentence[pos_max[0]:pos_max[1]])
-        sent2 = self.bert_tokenizer.tokenize(sentence[pos_max[1]:])
-
-        if rev:
-            if self.mask_entity:
-                ent0 = ['[unused6]']
-                ent1 = ['[unused5]']
-            pos_tail = [len(sent0), len(sent0) + len(ent0)]
-            pos_head = [
-                len(sent0) + len(ent0) + len(sent1),
-                len(sent0) + len(ent0) + len(sent1) + len(ent1)
-            ]
-        else:
-            if self.mask_entity:
-                ent0 = ['[unused5]']
-                ent1 = ['[unused6]']
-            pos_head = [len(sent0), len(sent0) + len(ent0)]
-            pos_tail = [
-                len(sent0) + len(ent0) + len(sent1),
-                len(sent0) + len(ent0) + len(sent1) + len(ent1)
-            ]
+        sent0 = self.roberta_tokenizer.tokenize(sentence[:pos_min[0]])
+        ent0 = self.roberta_tokenizer.tokenize(sentence[pos_min[0]:pos_min[1]])
+        sent1 = self.roberta_tokenizer.tokenize(sentence[pos_min[1]:pos_max[0]])
+        ent1 = self.roberta_tokenizer.tokenize(sentence[pos_max[0]:pos_max[1]])
+        sent2 = self.roberta_tokenizer.tokenize(sentence[pos_max[1]:])
+        # 不需要实体掩码设计
+        # if rev:
+        #     if self.mask_entity:
+        #         ent0 = ['<mask>']
+        #         ent1 = ['<mask>']
+        #     pos_tail = [len(sent0), len(sent0) + len(ent0)]
+        #     pos_head = [
+        #         len(sent0) + len(ent0) + len(sent1),
+        #         len(sent0) + len(ent0) + len(sent1) + len(ent1)
+        #     ]
+        # else:
+        #     if self.mask_entity:
+        #         ent0 = ['<mask>']
+        #         ent1 = ['<mask>']
+        #     pos_head = [len(sent0), len(sent0) + len(ent0)]
+        #     pos_tail = [
+        #         len(sent0) + len(ent0) + len(sent1),
+        #         len(sent0) + len(ent0) + len(sent1) + len(ent1)
+        #     ]
         tokens = sent0 + ent0 + sent1 + ent1 + sent2
 
         re_tokens = ['[CLS]']
@@ -76,7 +81,7 @@ class MyTokenizer(object):
                 pos2[1] = len(re_tokens)
             cur_pos += 1
         re_tokens.append('[SEP]')
-        return re_tokens[1:-1], pos1, pos2
+        return re_tokens, pos1, pos2
 
 
 def convert_pos_to_mask(e_pos, max_len=128):
@@ -142,7 +147,7 @@ class SentenceREDataset(Dataset):
     def __init__(self, data_file_path, tagset_path, pretrained_model_path=None, max_len=128):
         self.data_file_path = data_file_path
         self.tagset_path = tagset_path
-        self.pretrained_model_path = pretrained_model_path or 'bert-base-chinese'
+        self.pretrained_model_path = pretrained_model_path or 'roberta-base'
         self.tokenizer = MyTokenizer(pretrained_model_path=self.pretrained_model_path)
         self.max_len = max_len
         self.tokens_list, self.e1_mask_list, self.e2_mask_list, self.tags = read_data(data_file_path, tokenizer=self.tokenizer, max_len=self.max_len)
@@ -158,21 +163,27 @@ class SentenceREDataset(Dataset):
         sample_e1_mask = self.e1_mask_list[idx]
         sample_e2_mask = self.e2_mask_list[idx]
         sample_tag = self.tags[idx]
-        encoded = self.tokenizer.bert_tokenizer.encode_plus(sample_tokens, max_length=self.max_len, pad_to_max_length=True)
+        # ###############调试信息##############################
+        if isinstance(sample_tokens, list):
+            sample_tokens = "".join(sample_tokens)
+        if idx < 5:
+            print(f"Sample tokens: {sample_tokens}")
+        # print(f"Type of sample tokens: {type(sample_tokens)}")
+        # ###############调试信息##############################
+        encoded = self.tokenizer.roberta_tokenizer.encode_plus(sample_tokens, max_length=self.max_len, padding='max_length', truncation=True)
         sample_token_ids = encoded['input_ids']
-        sample_token_type_ids = encoded['token_type_ids']
         sample_attention_mask = encoded['attention_mask']
         sample_tag_id = self.tag2idx[sample_tag]
 
         sample = {
             'token_ids': torch.tensor(sample_token_ids),
-            'token_type_ids': torch.tensor(sample_token_type_ids),
             'attention_mask': torch.tensor(sample_attention_mask),
             'e1_mask': torch.tensor(sample_e1_mask),
             'e2_mask': torch.tensor(sample_e2_mask),
             'tag_id': torch.tensor(sample_tag_id)
         }
         return sample
+
 
 # import re
 # import os

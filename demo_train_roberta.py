@@ -1,6 +1,6 @@
 import os
 
-from relation_extraction.train import train, test
+from relation_extraction.train_roberta import train, test
 from relation_extraction.hparams import hparams
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'

@@ -6,8 +6,8 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from sklearn import metrics
 
-from .data_utils import SentenceREDataset, get_idx2tag, load_checkpoint, save_checkpoint
-from .model import SentenceRE
+from .data_utils_roberta import SentenceREDataset, get_idx2tag, load_checkpoint, save_checkpoint
+from .model_roberta import SentenceRE
 
 here = os.path.dirname(os.path.abspath(__file__))
 
@@ -66,13 +66,13 @@ def train(hparams):
         model.train()
         for i_batch, sample_batched in enumerate(tqdm(train_loader, desc='Training')):
             token_ids = sample_batched['token_ids'].to(device)
-            token_type_ids = sample_batched['token_type_ids'].to(device)
             attention_mask = sample_batched['attention_mask'].to(device)
             e1_mask = sample_batched['e1_mask'].to(device)
             e2_mask = sample_batched['e2_mask'].to(device)
             tag_ids = sample_batched['tag_id'].to(device)
             model.zero_grad()
-            logits = model(token_ids, token_type_ids, attention_mask, e1_mask, e2_mask)
+            # RoBERTa不需要token_type_ids
+            logits = model(token_ids, attention_mask, e1_mask, e2_mask)
             loss = criterion(logits, tag_ids)
             loss.backward()
             optimizer.step()
@@ -93,20 +93,19 @@ def train(hparams):
                 tags_pred = []
                 for val_i_batch, val_sample_batched in enumerate(tqdm(val_loader, desc='Validation')):
                     token_ids = val_sample_batched['token_ids'].to(device)
-                    token_type_ids = val_sample_batched['token_type_ids'].to(device)
                     attention_mask = val_sample_batched['attention_mask'].to(device)
                     e1_mask = val_sample_batched['e1_mask'].to(device)
                     e2_mask = val_sample_batched['e2_mask'].to(device)
                     tag_ids = val_sample_batched['tag_id']
-                    logits = model(token_ids, token_type_ids, attention_mask, e1_mask, e2_mask)
+                    logits = model(token_ids, attention_mask, e1_mask, e2_mask)
                     pred_tag_ids = logits.argmax(1)
                     tags_true.extend(tag_ids.tolist())
                     tags_pred.extend(pred_tag_ids.tolist())
 
                 print(metrics.classification_report(tags_true, tags_pred, labels=list(idx2tag.keys()), target_names=list(idx2tag.values())))
-                f1 = metrics.f1_score(tags_true, tags_pred, average='weighted')
-                precision = metrics.precision_score(tags_true, tags_pred, average='weighted')
-                recall = metrics.recall_score(tags_true, tags_pred, average='weighted')
+                f1 = metrics.f1_score(tags_true, tags_pred, average='macro')
+                precision = metrics.precision_score(tags_true, tags_pred, average='macro')
+                recall = metrics.recall_score(tags_true, tags_pred, average='macro')
                 accuracy = metrics.accuracy_score(tags_true, tags_pred)
                 writer.add_scalar('Validation/f1', f1, epoch)
                 writer.add_scalar('Validation/precision', precision, epoch)
@@ -125,7 +124,6 @@ def train(hparams):
                 save_checkpoint(checkpoint_dict, checkpoint_file)
 
     writer.close()
-
 
 import torch
 from torch.utils.data import DataLoader
@@ -156,13 +154,13 @@ def test(hparams):
     with torch.no_grad():
         for sample_batched in tqdm(test_loader, desc='Testing'):
             token_ids = sample_batched['token_ids'].to(device)
-            token_type_ids = sample_batched['token_type_ids'].to(device)
             attention_mask = sample_batched['attention_mask'].to(device)
             e1_mask = sample_batched['e1_mask'].to(device)
             e2_mask = sample_batched['e2_mask'].to(device)
             tag_ids = sample_batched['tag_id']
             
-            logits = model(token_ids, token_type_ids, attention_mask, e1_mask, e2_mask)
+            # RoBERTa不需要token_type_ids
+            logits = model(token_ids, attention_mask, e1_mask, e2_mask)
             pred_tag_ids = logits.argmax(1)
             
             tags_true.extend(tag_ids.tolist())
@@ -180,4 +178,5 @@ def test(hparams):
     # writer.add_scalar('Validation/accuracy', accuracy, epoch)
 
 # test(hparams)
+
 

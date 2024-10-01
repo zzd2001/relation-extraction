@@ -1,9 +1,7 @@
 import os
-import logging
 import torch
 import torch.nn as nn
-
-from transformers import BertTokenizer, BertModel
+from transformers import RobertaTokenizer, RobertaModel, AutoTokenizer, AutoModel
 
 here = os.path.dirname(os.path.abspath(__file__))
 
@@ -13,12 +11,17 @@ class SentenceRE(nn.Module):
     def __init__(self, hparams):
         super(SentenceRE, self).__init__()
 
-        self.pretrained_model_path = hparams.pretrained_model_path or 'bert-base-chinese'
+        self.pretrained_model_path = hparams.pretrained_model_path or 'roberta-base'
         self.embedding_dim = hparams.embedding_dim
         self.dropout = hparams.dropout
         self.tagset_size = hparams.tagset_size
 
-        self.bert_model = BertModel.from_pretrained(self.pretrained_model_path)
+        self.roberta_model = AutoModel.from_pretrained(self.pretrained_model_path)
+
+        # 扩展模型词嵌入以适应新标记
+        new_tokenizer_file = os.path.join(self.pretrained_model_path, 'roberta_tokenizer_with_special_tokens')
+        new_tokenizer = AutoTokenizer.from_pretrained(new_tokenizer_file)
+        self.roberta_model.resize_token_embeddings(len(new_tokenizer))
 
         self.dense = nn.Linear(self.embedding_dim, self.embedding_dim)
         self.drop = nn.Dropout(self.dropout)
@@ -26,8 +29,9 @@ class SentenceRE(nn.Module):
         self.norm = nn.LayerNorm(self.embedding_dim * 3)
         self.hidden2tag = nn.Linear(self.embedding_dim * 3, self.tagset_size)
 
-    def forward(self, token_ids, token_type_ids, attention_mask, e1_mask, e2_mask):
-        sequence_output, pooled_output = self.bert_model(input_ids=token_ids, token_type_ids=token_type_ids, attention_mask=attention_mask, return_dict=False)
+    def forward(self, token_ids, attention_mask, e1_mask, e2_mask):
+        # RoBERTa不使用token_type_ids
+        sequence_output, pooled_output = self.roberta_model(input_ids=token_ids, attention_mask=attention_mask, return_dict=False)
 
         # 每个实体的所有token向量的平均值
         e1_h = self.entity_average(sequence_output, e1_mask)
@@ -57,6 +61,7 @@ class SentenceRE(nn.Module):
         sum_vector = torch.bmm(e_mask_unsqueeze.float(), hidden_output).squeeze(1)  # [b, 1, j-i+1] * [b, j-i+1, dim] = [b, 1, dim] -> [b, dim]
         avg_vector = sum_vector.float() / length_tensor.float()  # broadcasting
         return avg_vector
+
 # import os
 # import torch
 # import torch.nn as nn
