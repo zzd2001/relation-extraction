@@ -167,15 +167,39 @@ def test(hparams):
             tags_pred.extend(pred_tag_ids.tolist())
 
     # Classification report
-    print(metrics.classification_report(tags_true, tags_pred, labels=list(idx2tag.keys()), target_names=list(idx2tag.values())))
+    # 打印分类报告，保留更多小数位
+    print(metrics.classification_report(
+        tags_true, 
+        tags_pred, 
+        labels=list(idx2tag.keys()), 
+        target_names=list(idx2tag.values()), 
+        digits=6  # 设置保留小数位数
+    ))
+
+    # 计算并打印 F1 分数
     f1 = metrics.f1_score(tags_true, tags_pred, average='macro')
+    print(f"F1 Score (Macro): {f1:.4f}")
+
+    # 计算并打印精确率
     precision = metrics.precision_score(tags_true, tags_pred, average='macro')
+    print(f"Precision (Macro): {precision:.4f}")
+
+    # 计算并打印召回率
     recall = metrics.recall_score(tags_true, tags_pred, average='macro')
+    print(f"Recall (Macro): {recall:.4f}")
+
+    # 计算并打印准确率
     accuracy = metrics.accuracy_score(tags_true, tags_pred)
-    # writer.add_scalar('Validation/f1', f1, epoch)
-    # writer.add_scalar('Validation/precision', precision, epoch)
-    # writer.add_scalar('Validation/recall', recall, epoch)
-    # writer.add_scalar('Validation/accuracy', accuracy, epoch)
+    print(f"Accuracy: {accuracy:.4f}")
+
+    # 保存测试结果Classification report
+    with open(hparams.log_dir + '/classification_report.txt', 'w') as f:
+        f.write(metrics.classification_report(tags_true, tags_pred, labels=list(idx2tag.keys()), target_names=list(idx2tag.values()), digits=6))
+        f.write('\n')
+        f.write("F1 Score (Macro): {f1:.6f}")
+        f.write(f"Precision (Macro): {precision:.6f}")
+        f.write(f"Recall (Macro): {recall:.6f}")
+        f.write(f"Accuracy: {accuracy:.6f}")
 
 # test(hparams)
 

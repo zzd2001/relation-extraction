@@ -8,7 +8,7 @@ here = os.path.dirname(os.path.abspath(__file__))
 
 
 def main():
-    train(hparams)
+    # train(hparams)
     test(hparams)
 
 
